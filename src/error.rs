@@ -19,6 +19,7 @@ use std::fmt;
 ///         Error::Interrupted => "interrupted, retry".into(),
 ///         Error::ConnectionClosed => "connection closed".into(),
 ///         Error::Overrun => "events dropped".into(),
+///         Error::WouldBlock => "would block".into(),
 ///     }
 /// }
 ///

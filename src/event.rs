@@ -195,7 +195,10 @@ pub enum ProcEvent {
 /// `len` is the number of valid bytes in `payload`.
 ///
 /// This function handles:
-/// - `NLMSG_NOOP` / `NLMSG_DONE` → `None` (caller should continue reading)
+/// - `NLMSG_NOOP` → `None` (caller should continue reading)
+/// - `NLMSG_DONE` (with no payload, i.e., true multi-part terminator) → `None`
+///   Note: the kernel connector protocol uses `NLMSG_DONE` with a payload for all
+///   data messages, so only 16-byte `NLMSG_DONE` is treated as a control message.
 /// - `NLMSG_ERROR` → `Err`
 /// - `NLMSG_OVERRUN` → `Err(Overrun)`
 /// - `NLMSG_DATA` + valid `cn_msg` + `proc_event` → `Some(ProcEvent)`
@@ -214,7 +217,8 @@ pub fn parse_netlink_message(payload: &[u8], len: usize) -> Result<Option<ProcEv
     }
 
     match nlmsg_type {
-        NLMSG_NOOP | NLMSG_DONE => Ok(None),
+        NLMSG_NOOP => Ok(None),
+        NLMSG_DONE if nlmsg_len == SIZE_NLMSGHDR => Ok(None),
         NLMSG_ERROR => {
             // NLMSG_ERROR payload is struct nlmsgerr { int error; struct nlmsghdr msg; }
             let errno = read_i32(payload, SIZE_NLMSGHDR);
@@ -502,8 +506,12 @@ impl<'a> Iterator for NetlinkMessageIter<'a> {
         let msg_slice = &self.buf[self.pos..self.pos + nlmsg_len];
         let nlmsg_type = read_u16(msg_slice, 4);
 
-        // Check for end of multi-part message
-        if nlmsg_type == NLMSG_DONE {
+        // Check for end of multi-part message.
+        // Kernel connector protocol uses NLMSG_DONE as the message type for
+        // ALL data messages (including proc events). A true multi-part DONE
+        // has no payload (nlmsg_len == SIZE_NLMSGHDR), while connector data
+        // messages have a cn_msg payload (nlmsg_len > SIZE_NLMSGHDR).
+        if nlmsg_type == NLMSG_DONE && nlmsg_len == SIZE_NLMSGHDR {
             self.pos = self.len; // consume all remaining
             return None; // Done is not an event, stop iteration
         }
@@ -531,7 +539,10 @@ impl ProcConnector {
     /// A buffer of at least 4096 bytes (one page) is recommended.
     ///
     /// This method handles all netlink control messages internally:
-    /// - `NLMSG_NOOP` / `NLMSG_DONE` → silently skipped, continue reading
+    /// - `NLMSG_NOOP` → silently skipped, continue reading
+    /// - `NLMSG_DONE` (with no payload) → silently skipped, continue reading
+    ///   (The kernel connector protocol uses `NLMSG_DONE` with a cn_msg payload
+    ///    for data messages, which are parsed as events.)
     /// - `NLMSG_ERROR` (non-zero) → returned as `Err(Os(...))`
     /// - `NLMSG_OVERRUN` → returned as `Err(Overrun)`
     /// - Valid data → parsed into `ProcEvent`
