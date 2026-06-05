@@ -111,14 +111,14 @@ pub const PROC_EVENT_EXIT: u32 = 0x80000000;
 pub const PROC_EVENT_HEADER_SIZE: usize = 16;
 
 /// Per-event sub-structure sizes (all within the `event_data` union):
-pub const SIZE_FORK_EVENT: usize = 16;   // 4 × i32 (pid/tgid)
-pub const SIZE_EXEC_EVENT: usize = 8;    // 2 × i32
-pub const SIZE_ID_EVENT: usize = 16;     // 2 × i32 + ruid/rgid(union) + euid/egid(union)
-pub const SIZE_SID_EVENT: usize = 8;     // 2 × i32
+pub const SIZE_FORK_EVENT: usize = 16; // 4 × i32 (pid/tgid)
+pub const SIZE_EXEC_EVENT: usize = 8; // 2 × i32
+pub const SIZE_ID_EVENT: usize = 16; // 2 × i32 + ruid/rgid(union) + euid/egid(union)
+pub const SIZE_SID_EVENT: usize = 8; // 2 × i32
 pub const SIZE_PTRACE_EVENT: usize = 16; // 4 × i32
-pub const SIZE_COMM_EVENT: usize = 24;   // 2 × i32 + char[16]
+pub const SIZE_COMM_EVENT: usize = 24; // 2 × i32 + char[16]
 pub const SIZE_COREDUMP_EVENT: usize = 16; // 4 × i32
-pub const SIZE_EXIT_EVENT: usize = 24;   // 4 × i32 + u32 + u32
+pub const SIZE_EXIT_EVENT: usize = 24; // 4 × i32 + u32 + u32
 
 // ---------------------------------------------------------------------------
 // proc_event sub-struct field offsets (relative to event_data union base)

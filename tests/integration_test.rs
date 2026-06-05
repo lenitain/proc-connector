@@ -66,5 +66,3 @@ fn test_subscribe_unsubscribe() {
     // Re-subscribe
     conn.subscribe().expect("re-subscribe failed");
 }
-
-

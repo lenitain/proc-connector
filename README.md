@@ -31,7 +31,7 @@ with `Error::Os(ENOSYS)`.
 cargo test
 ```
 
-67 unit tests covering all protocol parsing (every event variant, truncation
+68 unit tests covering all protocol parsing (every event variant, truncation
 edge cases, malformed headers, kernel boundary conditions, multi-message
 iteration), error formatting, alignment helpers, and alignment math.
 
@@ -57,18 +57,6 @@ sudo -E ~/.cargo/bin/cargo test --test integration_test -- --ignored
 The Linux kernel exposes process lifecycle events (exec, fork, exit, uid/gid
 change, ptrace, etc.) through the **Proc Connector** — a netlink protocol
 multiplexed over `NETLINK_CONNECTOR` with `CN_IDX_PROC`.
-
-The only existing Rust wrapper, [`cnproc`], covers only 4 event types (exec,
-fork, exit, coredump) and exposes them as raw `libc::c_int` values — no tgid,
-no uid/gid/sid data, no `as_raw_fd()` for async integration, and a `VecDeque`
-internal cache that violates separation of concerns.
-
-This crate is to `cnproc` what [`fanotify-fid`] is to `fanotify-rs`: a
-complete, safe, modern replacement that covers **every** event type with a
-properly structured API.
-
-[`cnproc`]: https://crates.io/crates/cnproc
-[`fanotify-fid`]: https://crates.io/crates/fanotify-fid
 
 ### Event coverage
 
@@ -121,11 +109,17 @@ let raw_fd = conn.as_raw_fd();
 
 ```
 src/
-├── consts.rs   # All kernel constants (PROC_EVENT_*, CN_IDX_PROC, NLMSG_*, layout offsets)
-├── error.rs    # Error enum (Os, Truncated, BufferTooSmall, Interrupted, ConnectionClosed, Overrun)
-├── socket.rs   # ProcConnector (new, subscribe, unsubscribe, recv_raw, as_raw_fd)
-├── event.rs    # ProcEvent enum + netlink/cn_msg/proc_event three-layer parser
-└── lib.rs      # Re-exports, prelude
+├── consts.rs      # All kernel constants (PROC_EVENT_*, CN_IDX_PROC, NLMSG_*, layout offsets)
+├── error.rs       # Error enum (Os, Truncated, UnexpectedConnector, BufferTooSmall, Interrupted, ConnectionClosed, Overrun, WouldBlock)
+├── proc_event.rs  # ProcEvent enum + Display implementation
+├── parse.rs       # Netlink message parsing (parse_netlink_message, parse_cn_msg, parse_proc_event)
+├── iter.rs        # NetlinkMessageIter for multi-part netlink messages
+├── socket.rs      # ProcConnector (new, subscribe, unsubscribe, recv, recv_timeout, recv_raw, as_raw_fd)
+├── tests/         # Test modules
+│   ├── mod.rs
+│   ├── event_tests.rs  # All parsing and event tests
+│   └── helpers.rs      # Shared test helper functions
+└── lib.rs         # Re-exports, prelude
 ```
 
 ---
@@ -136,13 +130,15 @@ All fallible operations return `Result<T, Error>`. The `Error` enum covers both
 system-level and protocol-level failures:
 
 | Variant | Meaning |
-|---------|---------|
+|---------|--------|
 | `Os(io::Error)` | System call failed (socket, bind, sendmsg, recv) |
 | `Truncated` | Message shorter than minimum protocol header |
+| `UnexpectedConnector` | Received message is not a proc connector event (cn_msg idx != CN_IDX_PROC) |
 | `BufferTooSmall { needed }` | Provided buffer too small |
 | `Interrupted` | recv interrupted by signal (retry) |
 | `ConnectionClosed` | recv returned 0 |
 | `Overrun` | Kernel reporting dropped events (increase buffer / consume faster) |
+| `WouldBlock` | Non-blocking recv found no data available |
 
 ```rust,no_run
 use proc_connector::Error;
@@ -152,6 +148,7 @@ fn handle(e: Error) {
         Error::Os(e) => eprintln!("os error: {e}"),
         Error::BufferTooSmall { needed } => eprintln!("need buffer of {needed} bytes"),
         Error::Overrun => eprintln!("events dropped!"),
+        Error::UnexpectedConnector => eprintln!("not a proc connector message"),
         _ => eprintln!("{e}"),
     }
 }

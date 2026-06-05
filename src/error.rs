@@ -20,6 +20,7 @@ use std::fmt;
 ///         Error::ConnectionClosed => "connection closed".into(),
 ///         Error::Overrun => "events dropped".into(),
 ///         Error::WouldBlock => "would block".into(),
+///         Error::UnexpectedConnector => "unexpected connector".into(),
 ///     }
 /// }
 ///
@@ -76,6 +77,9 @@ pub enum Error {
     /// Only returned when the socket is in non-blocking mode. Callers
     /// should wait for fd readiness (e.g. via poll/AsyncFd) and retry.
     WouldBlock,
+
+    /// 收到的消息不是proc connector事件（cn_msg idx != CN_IDX_PROC）。
+    UnexpectedConnector,
 }
 
 impl fmt::Display for Error {
@@ -90,6 +94,9 @@ impl fmt::Display for Error {
             Error::ConnectionClosed => write!(f, "connection closed"),
             Error::Overrun => write!(f, "message overrun, events may have been dropped"),
             Error::WouldBlock => write!(f, "operation would block"),
+            Error::UnexpectedConnector => {
+                write!(f, "unexpected connector index (expected CN_IDX_PROC)")
+            }
         }
     }
 }

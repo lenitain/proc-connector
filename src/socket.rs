@@ -12,6 +12,7 @@ use std::time::Duration;
 
 use crate::consts::*;
 use crate::error::{Error, Result};
+use crate::proc_event::ProcEvent;
 
 /// A safe handle to a Linux Netlink Proc Connector socket.
 ///
@@ -78,7 +79,7 @@ impl ProcConnector {
         Ok(())
     }
 
-        /// (Re-)subscribe to process events.
+    /// (Re-)subscribe to process events.
     ///
     /// Sends a `PROC_CN_MCAST_LISTEN` message via the netlink socket.
     /// This is safe to call multiple times (e.g. after a reconnection).
@@ -122,10 +123,10 @@ impl ProcConnector {
         // --- nlmsghdr (16 bytes, little-endian wire format) ---
         let hdr = &mut buf[..SIZE_NLMSGHDR];
         hdr[0..4].copy_from_slice(&(nlmsg_len as u32).to_ne_bytes()); // nlmsg_len
-        hdr[4..6].copy_from_slice(&NLMSG_MIN_TYPE.to_ne_bytes());      // nlmsg_type (≥ 16 = application-defined)
-        hdr[6..8].copy_from_slice(&NLM_F_REQUEST.to_ne_bytes());      // nlmsg_flags (request)
-        hdr[8..12].copy_from_slice(&0u32.to_ne_bytes());              // nlmsg_seq
-        hdr[12..16].copy_from_slice(&pid.to_ne_bytes());              // nlmsg_pid
+        hdr[4..6].copy_from_slice(&NLMSG_MIN_TYPE.to_ne_bytes()); // nlmsg_type (≥ 16 = application-defined)
+        hdr[6..8].copy_from_slice(&NLM_F_REQUEST.to_ne_bytes()); // nlmsg_flags (request)
+        hdr[8..12].copy_from_slice(&0u32.to_ne_bytes()); // nlmsg_seq
+        hdr[12..16].copy_from_slice(&pid.to_ne_bytes()); // nlmsg_pid
 
         // --- cn_msg (20 bytes header + op payload) ---
         let cn_off = nlmsg_hdrlen();
@@ -139,8 +140,7 @@ impl ProcConnector {
         // ack
         cn[12..16].copy_from_slice(&0u32.to_ne_bytes());
         // len (u16) = sizeof(proc_cn_mcast_op) = 4
-        cn[16..18]
-            .copy_from_slice(&(std::mem::size_of::<u32>() as u16).to_ne_bytes());
+        cn[16..18].copy_from_slice(&(std::mem::size_of::<u32>() as u16).to_ne_bytes());
         // flags
         cn[18..20].copy_from_slice(&0u16.to_ne_bytes());
         // data = proc_cn_mcast_op
@@ -235,10 +235,7 @@ impl ProcConnector {
             revents: 0,
         };
 
-        let timeout_ms = timeout
-            .as_millis()
-            .try_into()
-            .unwrap_or(libc::c_int::MAX);
+        let timeout_ms = timeout.as_millis().try_into().unwrap_or(libc::c_int::MAX);
 
         let ret = unsafe { libc::poll(&poll_fd as *const libc::pollfd as *mut _, 1, timeout_ms) };
 
@@ -260,6 +257,122 @@ impl ProcConnector {
             Ok(n) => Ok(Some(n)),
             Err(Error::WouldBlock) => Ok(None),
             Err(e) => Err(e),
+        }
+    }
+
+    /// Receive and parse the next process event.
+    ///
+    /// `buf` is the receive buffer provided by the caller (allocation control).
+    /// A buffer of at least 4096 bytes (one page) is recommended.
+    ///
+    /// This method handles all netlink control messages internally:
+    /// - `NLMSG_NOOP` → silently skipped, continue reading
+    /// - `NLMSG_DONE` (with no payload) → silently skipped, continue reading
+    ///   (The kernel connector protocol uses `NLMSG_DONE` with a cn_msg payload
+    ///   for data messages, which are parsed as events.)
+    /// - `NLMSG_ERROR` (non-zero) → returned as `Err(Os(...))`
+    /// - `NLMSG_OVERRUN` → returned as `Err(Overrun)`
+    /// - Valid data → parsed into `ProcEvent`
+    ///
+    /// # Errors
+    ///
+    /// See [`recv_raw`] for system-level errors.
+    /// Additionally returns `BufferTooSmall` if the buffer is too small
+    /// to hold even a single netlink header.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use proc_connector::ProcConnector;
+    ///
+    /// let conn = ProcConnector::new().unwrap();
+    /// let mut buf = [0u8; 4096];
+    /// loop {
+    ///     match conn.recv(&mut buf) {
+    ///         Ok(event) => println!("{event}"),
+    ///         Err(e) => { eprintln!("{e}"); break; }
+    ///     }
+    /// }
+    /// ```
+    pub fn recv(&self, buf: &mut [u8]) -> Result<ProcEvent> {
+        self.recv_impl(buf)
+    }
+
+    /// Receive and parse the next process event with a timeout.
+    ///
+    /// Returns `Ok(None)` if the timeout expires before an event is available.
+    ///
+    /// Unlike `recv()`, this method returns `Ok(None)` on timeout instead of
+    /// blocking indefinitely. It properly loops past netlink control messages
+    /// (NLMSG_NOOP, NLMSG_DONE, NLMSG_ERROR-ACK) just like `recv()` does.
+    ///
+    /// # Errors
+    ///
+    /// See [`recv_timeout`] for system-level errors.
+    pub fn recv_timeout(
+        &self,
+        buf: &mut [u8],
+        timeout: std::time::Duration,
+    ) -> Result<Option<ProcEvent>> {
+        if buf.len() < SIZE_NLMSGHDR {
+            return Err(Error::BufferTooSmall {
+                needed: SIZE_NLMSGHDR,
+            });
+        }
+
+        loop {
+            let n = match self.recv_raw_timeout(buf, timeout) {
+                Ok(Some(n)) => n,
+                Ok(None) => return Ok(None),
+                Err(Error::WouldBlock) => {
+                    // Non-blocking mode — should not happen with timeout
+                    // since recv_raw_timeout uses poll(). Treat as timeout.
+                    return Ok(None);
+                }
+                Err(e) => return Err(e),
+            };
+
+            // Iterate over all messages in the buffer, skipping control messages
+            if let Some(event) = crate::parse::first_event_from_buf(buf, n)? {
+                return Ok(Some(event));
+            }
+            // All messages were control messages — loop back and wait for a real event
+        }
+    }
+
+    /// Internal: block until a process event is received.
+    ///
+    /// Loops past netlink control messages (NLMSG_NOOP, NLMSG_DONE, NLMSG_ERROR-ACK)
+    /// until a real ProcEvent is parsed.
+    fn recv_impl(&self, buf: &mut [u8]) -> Result<ProcEvent> {
+        if buf.len() < SIZE_NLMSGHDR {
+            return Err(Error::BufferTooSmall {
+                needed: SIZE_NLMSGHDR,
+            });
+        }
+
+        loop {
+            let n = match self.recv_raw(buf) {
+                Ok(n) => n,
+                Err(Error::WouldBlock) => {
+                    // Non-blocking mode and no data — caller should use
+                    // poll/AsyncFd instead of blocking recv.
+                    // Return a non-recoverable error for blocking API.
+                    return Err(Error::Os(std::io::Error::new(
+                        std::io::ErrorKind::WouldBlock,
+                        "socket is non-blocking, use AsyncFd to wait for readiness",
+                    )));
+                }
+                Err(e) => return Err(e),
+            };
+
+            // Parse all messages in the buffer
+            if let Some(event) = crate::parse::first_event_from_buf(buf, n)? {
+                return Ok(event);
+            }
+
+            // If we got here, all messages were control messages.
+            // Loop back and wait for a real event.
         }
     }
 
@@ -298,7 +411,8 @@ impl ProcConnector {
         if flags < 0 {
             return Err(Error::Os(std::io::Error::last_os_error()));
         }
-        let ret = unsafe { libc::fcntl(self.fd.as_raw_fd(), libc::F_SETFL, flags | libc::O_NONBLOCK) };
+        let ret =
+            unsafe { libc::fcntl(self.fd.as_raw_fd(), libc::F_SETFL, flags | libc::O_NONBLOCK) };
         if ret < 0 {
             return Err(Error::Os(std::io::Error::last_os_error()));
         }
