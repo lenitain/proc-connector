@@ -78,7 +78,7 @@ pub enum Error {
     /// should wait for fd readiness (e.g. via poll/AsyncFd) and retry.
     WouldBlock,
 
-    /// 收到的消息不是proc connector事件（cn_msg idx != CN_IDX_PROC）。
+    /// Received message is not a proc connector event (cn_msg idx != CN_IDX_PROC).
     UnexpectedConnector,
 }
 
@@ -117,4 +117,14 @@ impl From<std::io::Error> for Error {
 }
 
 /// Convenience alias for `Result<T, Error>`.
+///
+/// # Example
+///
+/// ```
+/// use proc_connector::{Result, ProcConnector};
+///
+/// fn create_connector() -> Result<ProcConnector> {
+///     ProcConnector::new()
+/// }
+/// ```
 pub type Result<T> = std::result::Result<T, Error>;

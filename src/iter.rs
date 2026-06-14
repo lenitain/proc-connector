@@ -12,6 +12,24 @@ use crate::proc_event::ProcEvent;
 ///
 /// The netlink protocol can deliver multiple messages in one `recv` call
 /// (multi-part messages). This iterator handles walking through them.
+///
+/// # Example
+///
+/// ```no_run
+/// use proc_connector::{ProcConnector, NetlinkMessageIter};
+///
+/// let conn = ProcConnector::new().unwrap();
+/// let mut buf = vec![0u8; 4096];
+/// let n = conn.recv_raw(&mut buf).unwrap();
+///
+/// for msg in NetlinkMessageIter::new(&buf, n) {
+///     match msg {
+///         Ok(Some(event)) => println!("{event}"),
+///         Ok(None) => continue, // control message
+///         Err(e) => eprintln!("error: {e}"),
+///     }
+/// }
+/// ```
 pub struct NetlinkMessageIter<'a> {
     buf: &'a [u8],
     pos: usize,
@@ -20,6 +38,16 @@ pub struct NetlinkMessageIter<'a> {
 
 impl<'a> NetlinkMessageIter<'a> {
     /// Create a new iterator over `len` bytes starting at `buf`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use proc_connector::NetlinkMessageIter;
+    ///
+    /// let buf = vec![0u8; 4096];
+    /// let iter = NetlinkMessageIter::new(&buf, 0);
+    /// assert_eq!(iter.count(), 0);
+    /// ```
     pub fn new(buf: &'a [u8], len: usize) -> Self {
         NetlinkMessageIter { buf, pos: 0, len }
     }

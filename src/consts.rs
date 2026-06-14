@@ -13,13 +13,18 @@
 pub const NETLINK_CONNECTOR: i32 = 11;
 
 // NLMSG_* message types
+/// No-operation message type (ignored by netlink).
 pub const NLMSG_NOOP: u16 = 1;
+/// Error message type: contains `nlmsgerr` struct.
 pub const NLMSG_ERROR: u16 = 2;
+/// Done message type: marks the end of a multi-part message.
 pub const NLMSG_DONE: u16 = 3;
+/// Overrun message type: data was lost due to buffer overflow.
 pub const NLMSG_OVERRUN: u16 = 4;
 /// Minimum valid message type for application-specific messages.
 pub const NLMSG_MIN_TYPE: u16 = 16;
 
+/// Alignment boundary for netlink message headers (4 bytes).
 pub const NLMSG_ALIGNTO: usize = 4;
 
 /// Round `len` up to the nearest multiple of `NLMSG_ALIGNTO`.
@@ -49,9 +54,11 @@ const fn size_of_nlmsghdr() -> usize {
 }
 
 // Netlink socket options
+/// Socket option to disable `ENOBUFS` errors on recv.
 pub const NETLINK_NO_ENOBUFS: i32 = 5;
 
 // NLM_F flags
+/// Netlink message flag: this is a request message.
 pub const NLM_F_REQUEST: u16 = 1;
 
 // ---------------------------------------------------------------------------
@@ -111,60 +118,97 @@ pub const PROC_EVENT_EXIT: u32 = 0x80000000;
 pub const PROC_EVENT_HEADER_SIZE: usize = 16;
 
 /// Per-event sub-structure sizes (all within the `event_data` union):
-pub const SIZE_FORK_EVENT: usize = 16; // 4 × i32 (pid/tgid)
-pub const SIZE_EXEC_EVENT: usize = 8; // 2 × i32
-pub const SIZE_ID_EVENT: usize = 16; // 2 × i32 + ruid/rgid(union) + euid/egid(union)
-pub const SIZE_SID_EVENT: usize = 8; // 2 × i32
-pub const SIZE_PTRACE_EVENT: usize = 16; // 4 × i32
-pub const SIZE_COMM_EVENT: usize = 24; // 2 × i32 + char[16]
-pub const SIZE_COREDUMP_EVENT: usize = 16; // 4 × i32
-pub const SIZE_EXIT_EVENT: usize = 24; // 4 × i32 + u32 + u32
+/// Size of fork event data (4 × i32: parent_pid, parent_tgid, child_pid, child_tgid).
+pub const SIZE_FORK_EVENT: usize = 16;
+/// Size of exec event data (2 × i32: pid, tgid).
+pub const SIZE_EXEC_EVENT: usize = 8;
+/// Size of uid/gid event data (2 × i32 + ruid/rgid union + euid/egid union).
+pub const SIZE_ID_EVENT: usize = 16;
+/// Size of session ID event data (2 × i32: pid, tgid).
+pub const SIZE_SID_EVENT: usize = 8;
+/// Size of ptrace event data (4 × i32: pid, tgid, tracer_pid, tracer_tgid).
+pub const SIZE_PTRACE_EVENT: usize = 16;
+/// Size of comm event data (2 × i32 + char\[16\]: pid, tgid, comm).
+pub const SIZE_COMM_EVENT: usize = 24;
+/// Size of coredump event data (4 × i32: pid, tgid, parent_pid, parent_tgid).
+pub const SIZE_COREDUMP_EVENT: usize = 16;
+/// Size of exit event data (4 × i32 + u32 + u32: pid, tgid, exit_code, exit_signal, parent_pid, parent_tgid).
+pub const SIZE_EXIT_EVENT: usize = 24;
 
 // ---------------------------------------------------------------------------
 // proc_event sub-struct field offsets (relative to event_data union base)
 // ---------------------------------------------------------------------------
 
 // --- fork ---
+/// Offset to parent PID in fork event data.
 pub const FORK_PARENT_PID: usize = 0;
+/// Offset to parent TGID in fork event data.
 pub const FORK_PARENT_TGID: usize = 4;
+/// Offset to child PID in fork event data.
 pub const FORK_CHILD_PID: usize = 8;
+/// Offset to child TGID in fork event data.
 pub const FORK_CHILD_TGID: usize = 12;
 
 // --- exec ---
+/// Offset to PID in exec event data.
 pub const EXEC_PID: usize = 0;
+/// Offset to TGID in exec event data.
 pub const EXEC_TGID: usize = 4;
 
 // --- id (uid/gid share same layout) ---
+/// Offset to PID in uid/gid event data.
 pub const ID_PID: usize = 0;
+/// Offset to TGID in uid/gid event data.
 pub const ID_TGID: usize = 4;
+/// Offset to real UID/GID in uid/gid event data.
 pub const ID_RUID_RGID: usize = 8;
+/// Offset to effective UID/GID in uid/gid event data.
 pub const ID_EUID_EGID: usize = 12;
 
 // --- sid ---
+/// Offset to PID in session ID event data.
 pub const SID_PID: usize = 0;
+/// Offset to TGID in session ID event data.
 pub const SID_TGID: usize = 4;
 
 // --- ptrace ---
+/// Offset to PID in ptrace event data.
 pub const PTRACE_PID: usize = 0;
+/// Offset to TGID in ptrace event data.
 pub const PTRACE_TGID: usize = 4;
+/// Offset to tracer PID in ptrace event data.
 pub const PTRACE_TRACER_PID: usize = 8;
+/// Offset to tracer TGID in ptrace event data.
 pub const PTRACE_TRACER_TGID: usize = 12;
 
 // --- comm ---
+/// Offset to PID in comm event data.
 pub const COMM_PID: usize = 0;
+/// Offset to TGID in comm event data.
 pub const COMM_TGID: usize = 4;
+/// Offset to comm string (16 bytes) in comm event data.
 pub const COMM_DATA: usize = 8;
 
 // --- coredump ---
+/// Offset to PID in coredump event data.
 pub const COREDUMP_PID: usize = 0;
+/// Offset to TGID in coredump event data.
 pub const COREDUMP_TGID: usize = 4;
+/// Offset to parent PID in coredump event data.
 pub const COREDUMP_PARENT_PID: usize = 8;
+/// Offset to parent TGID in coredump event data.
 pub const COREDUMP_PARENT_TGID: usize = 12;
 
 // --- exit ---
+/// Offset to PID in exit event data.
 pub const EXIT_PID: usize = 0;
+/// Offset to TGID in exit event data.
 pub const EXIT_TGID: usize = 4;
+/// Offset to exit code in exit event data.
 pub const EXIT_CODE: usize = 8;
+/// Offset to exit signal in exit event data.
 pub const EXIT_SIGNAL: usize = 12;
+/// Offset to parent PID in exit event data.
 pub const EXIT_PARENT_PID: usize = 16;
+/// Offset to parent TGID in exit event data.
 pub const EXIT_PARENT_TGID: usize = 20;

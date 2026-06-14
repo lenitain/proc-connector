@@ -181,6 +181,17 @@ impl ProcConnector {
     /// - `Interrupted` if `EINTR` — retry the call.
     /// - `ConnectionClosed` if recv returns 0.
     /// - `Os` for other system call errors.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use proc_connector::ProcConnector;
+    ///
+    /// let conn = ProcConnector::new().unwrap();
+    /// let mut buf = vec![0u8; 4096];
+    /// let n = conn.recv_raw(&mut buf).unwrap();
+    /// println!("received {n} bytes");
+    /// ```
     pub fn recv_raw(&self, buf: &mut [u8]) -> Result<usize> {
         let len = unsafe {
             libc::recv(
@@ -276,7 +287,7 @@ impl ProcConnector {
     ///
     /// # Errors
     ///
-    /// See [`recv_raw`] for system-level errors.
+    /// See [`Self::recv_raw`] for system-level errors.
     /// Additionally returns `BufferTooSmall` if the buffer is too small
     /// to hold even a single netlink header.
     ///
@@ -308,7 +319,7 @@ impl ProcConnector {
     ///
     /// # Errors
     ///
-    /// See [`recv_timeout`] for system-level errors.
+    /// See [`Self::recv_timeout`] for system-level errors.
     pub fn recv_timeout(
         &self,
         buf: &mut [u8],
@@ -406,6 +417,22 @@ impl ProcConnector {
     /// # Errors
     ///
     /// Returns `Error::Os` if `fcntl(2)` fails.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use proc_connector::{ProcConnector, Error};
+    ///
+    /// let conn = ProcConnector::new().unwrap();
+    /// conn.set_nonblocking().unwrap();
+    ///
+    /// let mut buf = vec![0u8; 4096];
+    /// match conn.recv_raw(&mut buf) {
+    ///     Ok(n) => println!("received {n} bytes"),
+    ///     Err(Error::WouldBlock) => println!("no data available"),
+    ///     Err(e) => eprintln!("error: {e}"),
+    /// }
+    /// ```
     pub fn set_nonblocking(&self) -> Result<()> {
         let flags = unsafe { libc::fcntl(self.fd.as_raw_fd(), libc::F_GETFL) };
         if flags < 0 {

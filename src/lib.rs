@@ -54,12 +54,11 @@ mod iter;
 mod parse;
 mod proc_event;
 mod socket;
-pub mod tests;
 
 // Re-exports — the full public API
 pub use consts::*;
 pub use error::{Error, Result};
 pub use iter::NetlinkMessageIter;
-pub use parse::parse_netlink_message;
+pub use parse::{parse_cn_msg, parse_netlink_message};
 pub use proc_event::ProcEvent;
 pub use socket::ProcConnector;

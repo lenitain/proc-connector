@@ -2,7 +2,7 @@
 //!
 //! This module contains helper functions used by tests across different modules.
 
-use crate::consts::*;
+use proc_connector::*;
 
 /// Create a proc_event payload with the given `what` and event data.
 pub fn make_proc_event_payload(what: u32, event_data: &[u8]) -> Vec<u8> {
@@ -10,16 +10,6 @@ pub fn make_proc_event_payload(what: u32, event_data: &[u8]) -> Vec<u8> {
     buf.extend_from_slice(&what.to_ne_bytes()); // what
     buf.extend_from_slice(&0u32.to_ne_bytes()); // cpu
     buf.extend_from_slice(&0u64.to_ne_bytes()); // timestamp_ns
-    buf.extend_from_slice(event_data);
-    buf
-}
-
-/// Create a proc_event payload with a specific timestamp.
-pub fn make_proc_event_payload_with_ts(what: u32, timestamp_ns: u64, event_data: &[u8]) -> Vec<u8> {
-    let mut buf = Vec::with_capacity(PROC_EVENT_HEADER_SIZE + event_data.len());
-    buf.extend_from_slice(&what.to_ne_bytes());
-    buf.extend_from_slice(&0u32.to_ne_bytes()); // cpu
-    buf.extend_from_slice(&timestamp_ns.to_ne_bytes());
     buf.extend_from_slice(event_data);
     buf
 }

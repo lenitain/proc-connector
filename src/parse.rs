@@ -57,6 +57,22 @@ fn read_u64(buf: &[u8], off: usize) -> u64 {
 /// - `NLMSG_ERROR` → `Err`
 /// - `NLMSG_OVERRUN` → `Err(Overrun)`
 /// - `NLMSG_DATA` + valid `cn_msg` + `proc_event` → `Some(ProcEvent)`
+///
+/// # Example
+///
+/// ```
+/// use proc_connector::{parse_netlink_message, Error};
+///
+/// // Too short → Truncated
+/// let buf = [0u8; 4];
+/// assert!(matches!(parse_netlink_message(&buf, 4), Err(Error::Truncated)));
+///
+/// // NLMSG_NOOP → None
+/// let mut buf = [0u8; 16];
+/// buf[0..4].copy_from_slice(&16u32.to_ne_bytes()); // nlmsg_len
+/// buf[4..6].copy_from_slice(&1u16.to_ne_bytes());   // nlmsg_type = NLMSG_NOOP
+/// assert!(parse_netlink_message(&buf, 16).unwrap().is_none());
+/// ```
 pub fn parse_netlink_message(payload: &[u8], len: usize) -> Result<Option<ProcEvent>> {
     let payload = &payload[..len];
 
@@ -101,6 +117,21 @@ pub fn parse_netlink_message(payload: &[u8], len: usize) -> Result<Option<ProcEv
 }
 
 /// Parse a `cn_msg` payload (starting from `cb_id`) into a `ProcEvent`.
+///
+/// # Example
+///
+/// ```
+/// use proc_connector::{parse_cn_msg, Error};
+///
+/// // Too short → Truncated
+/// let buf = [0u8; 10];
+/// assert!(matches!(parse_cn_msg(&buf), Err(Error::Truncated)));
+///
+/// // Wrong connector index → UnexpectedConnector
+/// let mut buf = [0u8; 20];
+/// buf[0..4].copy_from_slice(&999u32.to_ne_bytes()); // wrong idx
+/// assert!(matches!(parse_cn_msg(&buf), Err(Error::UnexpectedConnector)));
+/// ```
 pub fn parse_cn_msg(buf: &[u8]) -> Result<ProcEvent> {
     if buf.len() < SIZE_CN_MSG {
         return Err(Error::Truncated);
@@ -266,7 +297,7 @@ fn parse_proc_event(buf: &[u8]) -> Result<ProcEvent> {
 // Convenience: find first event from a buffer
 // ---------------------------------------------------------------------------
 
-/// 从缓冲区中找到第一个真实事件
+/// Find the first real event from a buffer.
 pub fn first_event_from_buf(buf: &[u8], n: usize) -> Result<Option<ProcEvent>> {
     let iter = crate::iter::NetlinkMessageIter::new(buf, n);
     for msg in iter {

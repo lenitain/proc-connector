@@ -2,6 +2,8 @@
 
 [![Crates.io](https://img.shields.io/crates/v/proc-connector.svg)](https://crates.io/crates/proc-connector)
 [![Docs.rs](https://docs.rs/proc-connector/badge.svg)](https://docs.rs/proc-connector)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![CI](https://github.com/lenitain/proc-connector/actions/workflows/ci.yml/badge.svg)](https://github.com/lenitain/proc-connector/actions/workflows/ci.yml)
 
 Linux **Process Event Connector** (`NETLINK_CONNECTOR` + `CN_IDX_PROC`) — safe,
 zero-overhead, full-coverage parser for all 10+ `PROC_EVENT_*` types.
@@ -101,25 +103,6 @@ let raw_fd = conn.as_raw_fd();
 
 // With tokio:
 // let async_fd = tokio::io::unix::AsyncFd::new(conn).unwrap();
-```
-
----
-
-## Modules
-
-```
-src/
-├── consts.rs      # All kernel constants (PROC_EVENT_*, CN_IDX_PROC, NLMSG_*, layout offsets)
-├── error.rs       # Error enum (Os, Truncated, UnexpectedConnector, BufferTooSmall, Interrupted, ConnectionClosed, Overrun, WouldBlock)
-├── proc_event.rs  # ProcEvent enum + Display implementation
-├── parse.rs       # Netlink message parsing (parse_netlink_message, parse_cn_msg, parse_proc_event)
-├── iter.rs        # NetlinkMessageIter for multi-part netlink messages
-├── socket.rs      # ProcConnector (new, subscribe, unsubscribe, recv, recv_timeout, recv_raw, as_raw_fd)
-├── tests/         # Test modules
-│   ├── mod.rs
-│   ├── event_tests.rs  # All parsing and event tests
-│   └── helpers.rs      # Shared test helper functions
-└── lib.rs         # Re-exports, prelude
 ```
 
 ---
