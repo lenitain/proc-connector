@@ -1,22 +1,30 @@
 # proc-connector
 
+Linux Process Event Connector — safe, zero-overhead, full-coverage parser for all PROC_EVENT_* types.
+
 [![Crates.io](https://img.shields.io/crates/v/proc-connector.svg)](https://crates.io/crates/proc-connector)
 [![Docs.rs](https://docs.rs/proc-connector/badge.svg)](https://docs.rs/proc-connector)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/lenitain/proc-connector/actions/workflows/ci.yml/badge.svg)](https://github.com/lenitain/proc-connector/actions/workflows/ci.yml)
 
-Linux **Process Event Connector** (`NETLINK_CONNECTOR` + `CN_IDX_PROC`) — safe,
-zero-overhead, full-coverage parser for all 10+ `PROC_EVENT_*` types.
+## Overview
 
-## Installation
+**proc-connector** provides a safe, efficient Rust interface to Linux's Process Event Connector (`NETLINK_CONNECTOR` + `CN_IDX_PROC`). It parses all 10+ `PROC_EVENT_*` types including exec, fork, exit, uid/gid changes, ptrace, and more. The library offers zero-overhead abstractions with comprehensive error handling and async integration support.
 
-```bash
-cargo add proc-connector
+### Why proc-connector?
+
+Unlike other process monitoring solutions that rely on polling `/proc` or using incomplete netlink implementations, **proc-connector** provides complete coverage of all kernel process events with a type-safe API. It handles the complexities of netlink protocol parsing, message alignment, and error recovery internally, letting you focus on reacting to process lifecycle events. For system tools that need real-time process monitoring without the overhead of polling, proc-connector offers the most complete and ergonomic Rust interface to Linux's proc connector.
+
+## Usage
+
+Add to your `Cargo.toml`:
+
+```toml
+[dependencies]
+proc-connector = "0.1.6"
 ```
 
-Minimum supported Rust version: **1.85** (edition 2024).
-
-## Requirements
+### Requirements
 
 - Linux kernel with `CONFIG_CONNECTOR` and `CONFIG_PROC_EVENTS` enabled
 - **`CAP_NET_ADMIN`** capability (run as root or with `cap_net_admin+ep`)
@@ -25,58 +33,9 @@ The crate compiles on any platform, but all runtime operations require a Linux
 kernel with proc connector support. Non-Linux platforms will fail at runtime
 with `Error::Os(ENOSYS)`.
 
-## Testing
+### Quick start
 
-### Unit tests (no privileges needed)
-
-```bash
-cargo test
-```
-
-68 unit tests covering all protocol parsing (every event variant, truncation
-edge cases, malformed headers, kernel boundary conditions, multi-message
-iteration), error formatting, alignment helpers, and alignment math.
-
-### Integration tests (require root)
-
-2 additional tests verify end-to-end behavior against a real Linux kernel.
-Build as normal user, run under `sudo`:
-
-```bash
-cargo test --test integration_test --no-run
-sudo -E ~/.cargo/bin/cargo test --test integration_test -- --ignored
-```
-
-| Test | What it checks |
-|------|----------------|
-| `test_receive_exec_event` | Create connector → spawn `/bin/true` → receive `Exec` event within 5s |
-| `test_subscribe_unsubscribe` | Subscribe → unsubscribe → re-subscribe, no errors |
-
----
-
-## About this crate
-
-The Linux kernel exposes process lifecycle events (exec, fork, exit, uid/gid
-change, ptrace, etc.) through the **Proc Connector** — a netlink protocol
-multiplexed over `NETLINK_CONNECTOR` with `CN_IDX_PROC`.
-
-### Event coverage
-
-| Event | Kernel constant | Fields |
-|-------|----------------|--------|
-| `Exec` | `PROC_EVENT_EXEC` | `pid`, `tgid` |
-| `Fork` | `PROC_EVENT_FORK` | `parent_pid`, `parent_tgid`, `child_pid`, `child_tgid` |
-| `Exit` | `PROC_EVENT_EXIT` | `pid`, `tgid`, `exit_code`, `exit_signal` |
-| `Uid` | `PROC_EVENT_UID` | `pid`, `tgid`, `ruid`, `euid` |
-| `Gid` | `PROC_EVENT_GID` | `pid`, `tgid`, `rgid`, `egid` |
-| `Sid` | `PROC_EVENT_SID` | `pid`, `tgid` |
-| `Ptrace` | `PROC_EVENT_PTRACE` | `pid`, `tgid`, `tracer_pid`, `tracer_tgid` |
-| `Comm` | `PROC_EVENT_COMM` | `pid`, `tgid`, `comm: [u8; 16]` |
-| `Coredump` | `PROC_EVENT_COREDUMP` | `pid`, `tgid` |
-
-## Quick example
-
-```rust,no_run
+```rust
 use proc_connector::ProcConnector;
 use std::time::Duration;
 
@@ -92,51 +51,3 @@ loop {
     }
 }
 ```
-
-### Async integration
-
-```rust,no_run
-use proc_connector::ProcConnector;
-
-let conn = ProcConnector::new().unwrap();
-let raw_fd = conn.as_raw_fd();
-
-// With tokio:
-// let async_fd = tokio::io::unix::AsyncFd::new(conn).unwrap();
-```
-
----
-
-## Error handling
-
-All fallible operations return `Result<T, Error>`. The `Error` enum covers both
-system-level and protocol-level failures:
-
-| Variant | Meaning |
-|---------|--------|
-| `Os(io::Error)` | System call failed (socket, bind, sendmsg, recv) |
-| `Truncated` | Message shorter than minimum protocol header |
-| `UnexpectedConnector` | Received message is not a proc connector event (cn_msg idx != CN_IDX_PROC) |
-| `BufferTooSmall { needed }` | Provided buffer too small |
-| `Interrupted` | recv interrupted by signal (retry) |
-| `ConnectionClosed` | recv returned 0 |
-| `Overrun` | Kernel reporting dropped events (increase buffer / consume faster) |
-| `WouldBlock` | Non-blocking recv found no data available |
-
-```rust,no_run
-use proc_connector::Error;
-
-fn handle(e: Error) {
-    match &e {
-        Error::Os(e) => eprintln!("os error: {e}"),
-        Error::BufferTooSmall { needed } => eprintln!("need buffer of {needed} bytes"),
-        Error::Overrun => eprintln!("events dropped!"),
-        Error::UnexpectedConnector => eprintln!("not a proc connector message"),
-        _ => eprintln!("{e}"),
-    }
-}
-```
-
-## License
-
-[MIT License](./LICENSE)

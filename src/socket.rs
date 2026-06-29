@@ -459,6 +459,14 @@ impl AsFd for ProcConnector {
     }
 }
 
+impl std::fmt::Debug for ProcConnector {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ProcConnector")
+            .field("fd", &self.fd.as_raw_fd())
+            .finish()
+    }
+}
+
 impl Drop for ProcConnector {
     fn drop(&mut self) {
         // Best-effort unsubscribe; ignore errors since we're closing anyway.
