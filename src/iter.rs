@@ -3,6 +3,8 @@
 //! This module contains the `NetlinkMessageIter` struct for iterating
 //! over multiple netlink messages packed into a single receive buffer.
 
+use std::iter::FusedIterator;
+
 use crate::consts::*;
 use crate::error::{Error, Result};
 use crate::parse::parse_netlink_message;
@@ -63,11 +65,13 @@ impl<'a> Iterator for NetlinkMessageIter<'a> {
 
         let remaining = self.len - self.pos;
         if remaining < SIZE_NLMSGHDR {
+            self.pos = self.len;
             return Some(Err(Error::Truncated));
         }
 
         let nlmsg_len = read_u32(&self.buf[self.pos..], 0) as usize;
         if nlmsg_len < SIZE_NLMSGHDR || nlmsg_len > remaining {
+            self.pos = self.len;
             return Some(Err(Error::Truncated));
         }
 
@@ -93,6 +97,8 @@ impl<'a> Iterator for NetlinkMessageIter<'a> {
         Some(result)
     }
 }
+
+impl FusedIterator for NetlinkMessageIter<'_> {}
 
 // ---------------------------------------------------------------------------
 // Wire format helpers (private)

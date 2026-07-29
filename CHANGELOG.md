@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-07-29
+
+### Breaking
+
+- Every `ProcEvent` variant gains a `cpu: u32` field (the CPU that generated the event).
+- `ProcEvent::Exit` gains `parent_pid`, `parent_tgid` fields.
+- `ProcEvent::Coredump` gains `parent_pid`, `parent_tgid` fields.
+- `NETLINK_NO_ENOBUFS` is no longer set by default.
+- Non-Linux compilation now fails with a clear `compile_error!` instead of obscure linker errors.
+
+### Added
+
+- `EventMask` bitflags (`FORK`, `EXEC`, `EXIT`, `UID`, `GID`, `SID`, `PTRACE`, `COMM`, `COREDUMP`, `ALL`) and `subscribe_filtered()` for event filtering.
+- `set_recv_buf_size()` to set `SO_RCVBUF` on the netlink socket.
+- `subscribe()` now validates the kernel's subscription ACK.
+- `ProcEvent::exit_status()` / `terminating_signal()` helpers for decoding `wait(2)` status.
+- `SOCK_CLOEXEC` on the netlink socket to prevent fd leaks to child processes.
+- `SIZE_NLMSGERR` constant.
+- Property test (`proptest`) verifying public parse functions never panic on arbitrary input.
+
+### Fixed
+
+- `recv_raw_timeout`: `pollfd` is now `mut`, fixing undefined behavior from casting `&T` to `*mut T`.
+- `parse_netlink_message`: no longer panics when `len > payload.len()` or when `NLMSG_ERROR` message is shorter than 20 bytes.
+- `recv_raw`: `ENOBUFS` now maps to `Error::Overrun` instead of a generic `Os` error.
+- `NetlinkMessageIter`: truncated/corrupt messages no longer loop forever; implements `FusedIterator`.
+- `recv_timeout`: uses a deadline instead of restarting the full timeout on each skipped control message.
+
 ## [0.1.6] - 2026-06-29
 
 ### Fixed

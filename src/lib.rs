@@ -3,8 +3,11 @@
 //! A safe, modern Rust wrapper for the **Linux Process Event Connector**
 //! (netlink `NETLINK_CONNECTOR` + `CN_IDX_PROC`).
 //!
-//! Provides full coverage of all 10+ kernel process event types via a
-//! type-safe, zero-overhead, and fully safe API.
+//! Provides full coverage of all kernel process event types via a
+//! type-safe, zero-overhead API.
+//!
+//! **Linux only.** Compilation on non-Linux platforms will fail with a
+//! clear error message.
 //!
 //! ## Quick start
 //!
@@ -48,6 +51,9 @@
 //! - **No overreach**: does NOT manage threads, cache `/proc` data, or
 //!   impose any event processing policy.
 
+#[cfg(not(target_os = "linux"))]
+compile_error!("proc-connector only supports Linux");
+
 mod consts;
 mod error;
 mod iter;
@@ -61,4 +67,4 @@ pub use error::{Error, Result};
 pub use iter::NetlinkMessageIter;
 pub use parse::{parse_cn_msg, parse_netlink_message};
 pub use proc_event::ProcEvent;
-pub use socket::ProcConnector;
+pub use socket::{EventMask, ProcConnector};

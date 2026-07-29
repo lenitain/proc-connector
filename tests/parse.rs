@@ -15,6 +15,7 @@ fn parse_exec() {
     assert_eq!(
         event,
         ProcEvent::Exec {
+            cpu: 0,
             pid: 42,
             tgid: 100,
             timestamp_ns: 0,
@@ -36,6 +37,7 @@ fn parse_fork() {
     assert_eq!(
         event,
         ProcEvent::Fork {
+            cpu: 0,
             parent_pid: 10,
             parent_tgid: 10,
             child_pid: 20,
@@ -61,10 +63,13 @@ fn parse_exit() {
     assert_eq!(
         event,
         ProcEvent::Exit {
+            cpu: 0,
             pid: 1,
             tgid: 1,
             exit_code: 0,
             exit_signal: 17,
+            parent_pid: 0,
+            parent_tgid: 0,
             timestamp_ns: 0,
         }
     );
@@ -84,6 +89,7 @@ fn parse_uid() {
     assert_eq!(
         event,
         ProcEvent::Uid {
+            cpu: 0,
             pid: 5,
             tgid: 5,
             ruid: 1000,
@@ -107,6 +113,7 @@ fn parse_gid() {
     assert_eq!(
         event,
         ProcEvent::Gid {
+            cpu: 0,
             pid: 5,
             tgid: 5,
             rgid: 100,
@@ -128,6 +135,7 @@ fn parse_sid() {
     assert_eq!(
         event,
         ProcEvent::Sid {
+            cpu: 0,
             pid: 7,
             tgid: 7,
             timestamp_ns: 0
@@ -149,6 +157,7 @@ fn parse_ptrace() {
     assert_eq!(
         event,
         ProcEvent::Ptrace {
+            cpu: 0,
             pid: 1,
             tgid: 1,
             tracer_pid: 999,
@@ -175,6 +184,7 @@ fn parse_comm() {
     assert_eq!(
         event,
         ProcEvent::Comm {
+            cpu: 0,
             pid: 42,
             tgid: 42,
             comm,
@@ -197,8 +207,11 @@ fn parse_coredump() {
     assert_eq!(
         event,
         ProcEvent::Coredump {
+            cpu: 0,
             pid: 1,
             tgid: 1,
+            parent_pid: 0,
+            parent_tgid: 0,
             timestamp_ns: 0
         }
     );
@@ -301,6 +314,7 @@ fn parse_exec_timestamp_nonzero() {
             pid,
             tgid,
             timestamp_ns,
+            ..
         } => {
             assert_eq!(pid, 42);
             assert_eq!(tgid, 100);
@@ -326,6 +340,7 @@ fn parse_exec_negative_pid() {
     assert_eq!(
         event,
         ProcEvent::Exec {
+            cpu: 0,
             pid: u32::MAX,
             tgid: u32::MAX,
             timestamp_ns: 0,
@@ -342,10 +357,7 @@ fn parse_comm_no_nul() {
     ]
     .concat();
     let mut comm_event = data;
-    let comm: [u8; 16] = [
-        b'a', b'b', b'c', b'd', b'e', b'f', b'g', b'h', b'i', b'j', b'k', b'l', b'm', b'n', b'o',
-        b'p',
-    ];
+    let comm: [u8; 16] = *b"abcdefghijklmnop";
     comm_event.extend_from_slice(&comm);
 
     let buf = make_full_message(PROC_EVENT_COMM, &comm_event);
@@ -353,6 +365,7 @@ fn parse_comm_no_nul() {
     assert_eq!(
         event,
         ProcEvent::Comm {
+            cpu: 0,
             pid: 42,
             tgid: 42,
             comm,
@@ -426,6 +439,7 @@ fn parse_with_nlm_f_request_flag() {
     assert_eq!(
         event,
         ProcEvent::Exec {
+            cpu: 0,
             pid: 42,
             tgid: 100,
             timestamp_ns: 0

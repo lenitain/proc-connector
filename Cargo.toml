@@ -1,6 +1,6 @@
 [package]
 name = "proc-connector"
-version = "0.1.6"
+version = "0.2.0"
 edition = "2024"
 license = "MIT"
 description = "A safe, modern Rust wrapper for the Linux Process Event Connector (netlink PROC_EVENT_*)"
@@ -25,3 +25,6 @@ path = "src/lib.rs"
 
 [dependencies]
 libc = "0.2"
+
+[dev-dependencies]
+proptest = "1"

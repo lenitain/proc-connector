@@ -74,6 +74,9 @@ fn read_u64(buf: &[u8], off: usize) -> u64 {
 /// assert!(parse_netlink_message(&buf, 16).unwrap().is_none());
 /// ```
 pub fn parse_netlink_message(payload: &[u8], len: usize) -> Result<Option<ProcEvent>> {
+    if len > payload.len() {
+        return Err(Error::Truncated);
+    }
     let payload = &payload[..len];
 
     if payload.len() < SIZE_NLMSGHDR {
@@ -91,7 +94,9 @@ pub fn parse_netlink_message(payload: &[u8], len: usize) -> Result<Option<ProcEv
         NLMSG_NOOP => Ok(None),
         NLMSG_DONE if nlmsg_len == SIZE_NLMSGHDR => Ok(None),
         NLMSG_ERROR => {
-            // NLMSG_ERROR payload is struct nlmsgerr { int error; struct nlmsghdr msg; }
+            if payload.len() < SIZE_NLMSGERR {
+                return Err(Error::Truncated);
+            }
             let errno = read_i32(payload, SIZE_NLMSGHDR);
             if errno == 0 {
                 // ACK (error == 0 means success), ignore
@@ -165,17 +170,21 @@ fn parse_proc_event(buf: &[u8]) -> Result<ProcEvent> {
     }
 
     let what = read_u32(buf, 0);
-    let _cpu = read_u32(buf, 4);
+    let cpu = read_u32(buf, 4);
     let timestamp_ns = read_u64(buf, 8);
-
     let data = &buf[PROC_EVENT_HEADER_SIZE..];
 
+    build_proc_event(what, cpu, timestamp_ns, data)
+}
+
+fn build_proc_event(what: u32, cpu: u32, timestamp_ns: u64, data: &[u8]) -> Result<ProcEvent> {
     match what {
         PROC_EVENT_EXEC => {
             if data.len() < SIZE_EXEC_EVENT {
                 return Err(Error::Truncated);
             }
             Ok(ProcEvent::Exec {
+                cpu,
                 pid: read_i32(data, EXEC_PID) as u32,
                 tgid: read_i32(data, EXEC_TGID) as u32,
                 timestamp_ns,
@@ -187,6 +196,7 @@ fn parse_proc_event(buf: &[u8]) -> Result<ProcEvent> {
                 return Err(Error::Truncated);
             }
             Ok(ProcEvent::Fork {
+                cpu,
                 parent_pid: read_i32(data, FORK_PARENT_PID) as u32,
                 parent_tgid: read_i32(data, FORK_PARENT_TGID) as u32,
                 child_pid: read_i32(data, FORK_CHILD_PID) as u32,
@@ -200,10 +210,13 @@ fn parse_proc_event(buf: &[u8]) -> Result<ProcEvent> {
                 return Err(Error::Truncated);
             }
             Ok(ProcEvent::Exit {
+                cpu,
                 pid: read_i32(data, EXIT_PID) as u32,
                 tgid: read_i32(data, EXIT_TGID) as u32,
                 exit_code: read_u32(data, EXIT_CODE),
                 exit_signal: read_u32(data, EXIT_SIGNAL),
+                parent_pid: read_i32(data, EXIT_PARENT_PID) as u32,
+                parent_tgid: read_i32(data, EXIT_PARENT_TGID) as u32,
                 timestamp_ns,
             })
         }
@@ -213,6 +226,7 @@ fn parse_proc_event(buf: &[u8]) -> Result<ProcEvent> {
                 return Err(Error::Truncated);
             }
             Ok(ProcEvent::Uid {
+                cpu,
                 pid: read_i32(data, ID_PID) as u32,
                 tgid: read_i32(data, ID_TGID) as u32,
                 ruid: read_u32(data, ID_RUID_RGID),
@@ -226,6 +240,7 @@ fn parse_proc_event(buf: &[u8]) -> Result<ProcEvent> {
                 return Err(Error::Truncated);
             }
             Ok(ProcEvent::Gid {
+                cpu,
                 pid: read_i32(data, ID_PID) as u32,
                 tgid: read_i32(data, ID_TGID) as u32,
                 rgid: read_u32(data, ID_RUID_RGID),
@@ -239,6 +254,7 @@ fn parse_proc_event(buf: &[u8]) -> Result<ProcEvent> {
                 return Err(Error::Truncated);
             }
             Ok(ProcEvent::Sid {
+                cpu,
                 pid: read_i32(data, SID_PID) as u32,
                 tgid: read_i32(data, SID_TGID) as u32,
                 timestamp_ns,
@@ -250,6 +266,7 @@ fn parse_proc_event(buf: &[u8]) -> Result<ProcEvent> {
                 return Err(Error::Truncated);
             }
             Ok(ProcEvent::Ptrace {
+                cpu,
                 pid: read_i32(data, PTRACE_PID) as u32,
                 tgid: read_i32(data, PTRACE_TGID) as u32,
                 tracer_pid: read_i32(data, PTRACE_TRACER_PID) as u32,
@@ -265,6 +282,7 @@ fn parse_proc_event(buf: &[u8]) -> Result<ProcEvent> {
             let mut comm = [0u8; 16];
             comm.copy_from_slice(&data[COMM_DATA..COMM_DATA + 16]);
             Ok(ProcEvent::Comm {
+                cpu,
                 pid: read_i32(data, COMM_PID) as u32,
                 tgid: read_i32(data, COMM_TGID) as u32,
                 comm,
@@ -277,19 +295,19 @@ fn parse_proc_event(buf: &[u8]) -> Result<ProcEvent> {
                 return Err(Error::Truncated);
             }
             Ok(ProcEvent::Coredump {
+                cpu,
                 pid: read_i32(data, COREDUMP_PID) as u32,
                 tgid: read_i32(data, COREDUMP_TGID) as u32,
+                parent_pid: read_i32(data, COREDUMP_PARENT_PID) as u32,
+                parent_tgid: read_i32(data, COREDUMP_PARENT_TGID) as u32,
                 timestamp_ns,
             })
         }
 
-        _ => {
-            // Unknown event — forward compatibility
-            Ok(ProcEvent::Unknown {
-                what,
-                raw_data: data.to_vec(),
-            })
-        }
+        _ => Ok(ProcEvent::Unknown {
+            what,
+            raw_data: data.to_vec(),
+        }),
     }
 }
 

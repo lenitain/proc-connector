@@ -46,10 +46,11 @@ use std::fmt;
 ///     }
 /// }
 ///
-/// let exec = ProcEvent::Exec { pid: 42, tgid: 42, timestamp_ns: 0 };
+/// let exec = ProcEvent::Exec { cpu: 0, pid: 42, tgid: 42, timestamp_ns: 0 };
 /// assert_eq!(describe(&exec), "process 42 exec'd");
 ///
-/// let exit = ProcEvent::Exit { pid: 7, tgid: 7, exit_code: 0, exit_signal: 17, timestamp_ns: 0 };
+/// let exit = ProcEvent::Exit { cpu: 0, pid: 7, tgid: 7, exit_code: 0, exit_signal: 17,
+///     parent_pid: 1, parent_tgid: 1, timestamp_ns: 0 };
 /// assert_eq!(describe(&exit), "process 7 exited with code 0");
 /// ```
 ///
@@ -59,6 +60,7 @@ use std::fmt;
 /// use proc_connector::ProcEvent;
 ///
 /// let event = ProcEvent::Fork {
+///     cpu: 0,
 ///     parent_pid: 100,
 ///     parent_tgid: 100,
 ///     child_pid: 200,
@@ -71,6 +73,8 @@ use std::fmt;
 pub enum ProcEvent {
     /// A process called `execve(2)`.
     Exec {
+        /// CPU that generated this event.
+        cpu: u32,
         pid: u32,
         tgid: u32,
         /// Kernel timestamp (nanoseconds since boot).
@@ -78,6 +82,8 @@ pub enum ProcEvent {
     },
     /// A new process was created via `fork`/`clone`.
     Fork {
+        /// CPU that generated this event.
+        cpu: u32,
         parent_pid: u32,
         parent_tgid: u32,
         child_pid: u32,
@@ -87,15 +93,21 @@ pub enum ProcEvent {
     },
     /// A process exited.
     Exit {
+        /// CPU that generated this event.
+        cpu: u32,
         pid: u32,
         tgid: u32,
         exit_code: u32,
         exit_signal: u32,
+        parent_pid: u32,
+        parent_tgid: u32,
         /// Kernel timestamp (nanoseconds since boot).
         timestamp_ns: u64,
     },
     /// Real or effective UID changed.
     Uid {
+        /// CPU that generated this event.
+        cpu: u32,
         pid: u32,
         tgid: u32,
         ruid: u32,
@@ -105,6 +117,8 @@ pub enum ProcEvent {
     },
     /// Real or effective GID changed.
     Gid {
+        /// CPU that generated this event.
+        cpu: u32,
         pid: u32,
         tgid: u32,
         rgid: u32,
@@ -114,6 +128,8 @@ pub enum ProcEvent {
     },
     /// Session ID changed (`setsid`).
     Sid {
+        /// CPU that generated this event.
+        cpu: u32,
         pid: u32,
         tgid: u32,
         /// Kernel timestamp (nanoseconds since boot).
@@ -121,6 +137,8 @@ pub enum ProcEvent {
     },
     /// `ptrace` attach or detach.
     Ptrace {
+        /// CPU that generated this event.
+        cpu: u32,
         pid: u32,
         tgid: u32,
         tracer_pid: u32,
@@ -130,6 +148,8 @@ pub enum ProcEvent {
     },
     /// Process name (`comm`) changed (max 16 bytes, may include trailing NUL).
     Comm {
+        /// CPU that generated this event.
+        cpu: u32,
         pid: u32,
         tgid: u32,
         /// The new process name (up to 16 bytes, usually NUL-terminated).
@@ -139,8 +159,12 @@ pub enum ProcEvent {
     },
     /// A core dump occurred.
     Coredump {
+        /// CPU that generated this event.
+        cpu: u32,
         pid: u32,
         tgid: u32,
+        parent_pid: u32,
+        parent_tgid: u32,
         /// Kernel timestamp (nanoseconds since boot).
         timestamp_ns: u64,
     },
@@ -153,6 +177,61 @@ pub enum ProcEvent {
     },
 }
 
+impl ProcEvent {
+    /// Extract the exit status from an `Exit` event's `exit_code` field.
+    ///
+    /// Returns the value that would be returned by `WEXITSTATUS(exit_code)`,
+    /// i.e. the low 8 bits of the exit code. Returns `None` if the process
+    /// was terminated by a signal.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use proc_connector::ProcEvent;
+    /// let e = ProcEvent::Exit { cpu: 0, pid:1, tgid:1, exit_code: (1 << 8), exit_signal:0,
+    ///     parent_pid:0, parent_tgid:0, timestamp_ns:0 };
+    /// assert_eq!(e.exit_status(), Some(1));
+    /// ```
+    pub fn exit_status(&self) -> Option<i32> {
+        if let ProcEvent::Exit {
+            exit_code,
+            exit_signal,
+            ..
+        } = self
+        {
+            if *exit_signal == 0 {
+                Some(((exit_code >> 8) & 0xFF) as i32)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
+    /// Extract the terminating signal from an `Exit` event's `exit_code` field.
+    ///
+    /// Returns the signal number that caused the process to terminate,
+    /// i.e. `WTERMSIG(exit_code)`. Returns `None` if the process exited
+    /// normally (not by signal).
+    pub fn terminating_signal(&self) -> Option<i32> {
+        if let ProcEvent::Exit {
+            exit_code,
+            exit_signal,
+            ..
+        } = self
+        {
+            if *exit_signal != 0 || (*exit_code & 0x7F) != 0 {
+                Some((exit_code & 0x7F) as i32)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+}
+
 impl fmt::Display for ProcEvent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -160,6 +239,7 @@ impl fmt::Display for ProcEvent {
                 pid,
                 tgid,
                 timestamp_ns,
+                ..
             } => write!(f, "EXEC pid={pid} tgid={tgid} ts={timestamp_ns}"),
             ProcEvent::Fork {
                 parent_pid,
@@ -167,6 +247,7 @@ impl fmt::Display for ProcEvent {
                 child_pid,
                 child_tgid,
                 timestamp_ns,
+                ..
             } => write!(
                 f,
                 "FORK parent=({parent_pid},{parent_tgid}) child=({child_pid},{child_tgid}) ts={timestamp_ns}"
@@ -176,10 +257,13 @@ impl fmt::Display for ProcEvent {
                 tgid,
                 exit_code,
                 exit_signal,
+                parent_pid,
+                parent_tgid,
                 timestamp_ns,
+                ..
             } => write!(
                 f,
-                "EXIT pid={pid} tgid={tgid} code={exit_code} signal={exit_signal} ts={timestamp_ns}"
+                "EXIT pid={pid} tgid={tgid} code={exit_code} signal={exit_signal} parent=({parent_pid},{parent_tgid}) ts={timestamp_ns}"
             ),
             ProcEvent::Uid {
                 pid,
@@ -187,6 +271,7 @@ impl fmt::Display for ProcEvent {
                 ruid,
                 euid,
                 timestamp_ns,
+                ..
             } => write!(
                 f,
                 "UID pid={pid} tgid={tgid} ruid={ruid} euid={euid} ts={timestamp_ns}"
@@ -197,6 +282,7 @@ impl fmt::Display for ProcEvent {
                 rgid,
                 egid,
                 timestamp_ns,
+                ..
             } => write!(
                 f,
                 "GID pid={pid} tgid={tgid} rgid={rgid} egid={egid} ts={timestamp_ns}"
@@ -205,6 +291,7 @@ impl fmt::Display for ProcEvent {
                 pid,
                 tgid,
                 timestamp_ns,
+                ..
             } => write!(f, "SID pid={pid} tgid={tgid} ts={timestamp_ns}"),
             ProcEvent::Ptrace {
                 pid,
@@ -212,6 +299,7 @@ impl fmt::Display for ProcEvent {
                 tracer_pid,
                 tracer_tgid,
                 timestamp_ns,
+                ..
             } => write!(
                 f,
                 "PTRACE pid={pid} tgid={tgid} tracer=({tracer_pid},{tracer_tgid}) ts={timestamp_ns}"
@@ -221,8 +309,8 @@ impl fmt::Display for ProcEvent {
                 tgid,
                 comm,
                 timestamp_ns,
+                ..
             } => {
-                // Find NUL terminator for clean display
                 let end = comm.iter().position(|&b| b == 0).unwrap_or(16);
                 let name = std::str::from_utf8(&comm[..end]).unwrap_or("<invalid>");
                 write!(
@@ -233,9 +321,15 @@ impl fmt::Display for ProcEvent {
             ProcEvent::Coredump {
                 pid,
                 tgid,
+                parent_pid,
+                parent_tgid,
                 timestamp_ns,
+                ..
             } => {
-                write!(f, "COREDUMP pid={pid} tgid={tgid} ts={timestamp_ns}")
+                write!(
+                    f,
+                    "COREDUMP pid={pid} tgid={tgid} parent=({parent_pid},{parent_tgid}) ts={timestamp_ns}"
+                )
             }
             ProcEvent::Unknown { what, raw_data } => {
                 write!(f, "UNKNOWN what=0x{what:08x} len={}", raw_data.len())

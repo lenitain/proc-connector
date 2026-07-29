@@ -21,7 +21,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-proc-connector = "0.1.6"
+proc-connector = "0.2"
 ```
 
 ### Requirements
@@ -29,9 +29,7 @@ proc-connector = "0.1.6"
 - Linux kernel with `CONFIG_CONNECTOR` and `CONFIG_PROC_EVENTS` enabled
 - **`CAP_NET_ADMIN`** capability (run as root or with `cap_net_admin+ep`)
 
-The crate compiles on any platform, but all runtime operations require a Linux
-kernel with proc connector support. Non-Linux platforms will fail at runtime
-with `Error::Os(ENOSYS)`.
+This crate is Linux-only and will fail to compile on other platforms.
 
 ### Quick start
 

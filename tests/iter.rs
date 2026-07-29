@@ -22,6 +22,7 @@ fn multi_part_message_iteration() {
     assert_eq!(
         events[0],
         ProcEvent::Exec {
+            cpu: 0,
             pid: 42,
             tgid: 100,
             timestamp_ns: 0
@@ -30,6 +31,7 @@ fn multi_part_message_iteration() {
     assert_eq!(
         events[1],
         ProcEvent::Exec {
+            cpu: 0,
             pid: 43,
             tgid: 101,
             timestamp_ns: 0
@@ -69,6 +71,7 @@ fn iter_done_terminates_early() {
     assert_eq!(
         events[0],
         ProcEvent::Exec {
+            cpu: 0,
             pid: 42,
             tgid: 100,
             timestamp_ns: 0
@@ -106,6 +109,7 @@ fn iter_interleaved_control_messages() {
     assert_eq!(
         events[0],
         ProcEvent::Exec {
+            cpu: 0,
             pid: 42,
             tgid: 100,
             timestamp_ns: 0
@@ -114,6 +118,7 @@ fn iter_interleaved_control_messages() {
     assert_eq!(
         events[1],
         ProcEvent::Fork {
+            cpu: 0,
             parent_pid: 10,
             parent_tgid: 10,
             child_pid: 20,
@@ -208,6 +213,7 @@ fn iter_alignment_correct() {
     assert_eq!(
         events[0],
         ProcEvent::Exec {
+            cpu: 0,
             pid: 42,
             tgid: 100,
             timestamp_ns: 0

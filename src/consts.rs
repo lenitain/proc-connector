@@ -48,6 +48,9 @@ pub const fn nlmsg_length(len: usize) -> usize {
 /// Size of `struct nlmsghdr` in bytes (without alignment).
 pub const SIZE_NLMSGHDR: usize = 16;
 
+/// Minimum size of `struct nlmsgerr` (error code + original header).
+pub const SIZE_NLMSGERR: usize = 20;
+
 #[inline]
 const fn size_of_nlmsghdr() -> usize {
     SIZE_NLMSGHDR
@@ -85,6 +88,8 @@ pub const CONNECTOR_MAX_MSG_SIZE: usize = 16384;
 // Process event constants
 // ---------------------------------------------------------------------------
 
+/// No event / ACK (used for subscription acknowledgement).
+pub const PROC_EVENT_NONE: u32 = 0x00000000;
 /// A process was forked.
 pub const PROC_EVENT_FORK: u32 = 0x00000001;
 /// A process executed a new program (exec).

@@ -92,7 +92,32 @@ impl ProcConnector {
     /// conn.subscribe().expect("subscribe");
     /// ```
     pub fn subscribe(&self) -> Result<()> {
-        self.send_mcast_op(PROC_CN_MCAST_LISTEN)
+        self.send_mcast_msg(&PROC_CN_MCAST_LISTEN.to_ne_bytes())?;
+        self.check_subscribe_ack()
+    }
+
+    /// Subscribe to process events, filtering by event type mask.
+    ///
+    /// `mask` is a bitmask of `PROC_EVENT_*` values (use [`EventMask`]
+    /// constants or bitwise OR). On kernels that do not support filtering
+    /// the mask is silently ignored and all events are received.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use proc_connector::{ProcConnector, EventMask};
+    ///
+    /// let conn = ProcConnector::new().unwrap();
+    /// conn.subscribe_filtered(EventMask::EXEC | EventMask::EXIT)
+    ///     .expect("subscribe");
+    /// ```
+    pub fn subscribe_filtered(&self, mask: EventMask) -> Result<()> {
+        let mask = mask.0;
+        let mut payload = [0u8; 8];
+        payload[..4].copy_from_slice(&PROC_CN_MCAST_LISTEN.to_ne_bytes());
+        payload[4..].copy_from_slice(&mask.to_ne_bytes());
+        self.send_mcast_msg(&payload)?;
+        self.check_subscribe_ack()
     }
 
     /// Unsubscribe from process events.
@@ -109,42 +134,33 @@ impl ProcConnector {
     /// conn.subscribe().expect("re-subscribe");
     /// ```
     pub fn unsubscribe(&self) -> Result<()> {
-        self.send_mcast_op(PROC_CN_MCAST_IGNORE)
+        self.send_mcast_msg(&PROC_CN_MCAST_IGNORE.to_ne_bytes())
     }
 
-    /// Send a `proc_cn_mcast_op` command to the kernel.
-    fn send_mcast_op(&self, op: u32) -> Result<()> {
-        let nlmsg_payload_len = SIZE_CN_MSG + std::mem::size_of::<u32>();
+    /// Send a netlink message to the kernel connector control channel.
+    fn send_mcast_msg(&self, payload: &[u8]) -> Result<()> {
+        let nlmsg_payload_len = SIZE_CN_MSG + payload.len();
         let nlmsg_len = nlmsg_length(nlmsg_payload_len);
 
         let mut buf = vec![0u8; nlmsg_len];
         let pid = std::process::id();
 
-        // --- nlmsghdr (16 bytes, little-endian wire format) ---
         let hdr = &mut buf[..SIZE_NLMSGHDR];
-        hdr[0..4].copy_from_slice(&(nlmsg_len as u32).to_ne_bytes()); // nlmsg_len
-        hdr[4..6].copy_from_slice(&NLMSG_MIN_TYPE.to_ne_bytes()); // nlmsg_type (≥ 16 = application-defined)
-        hdr[6..8].copy_from_slice(&NLM_F_REQUEST.to_ne_bytes()); // nlmsg_flags (request)
-        hdr[8..12].copy_from_slice(&0u32.to_ne_bytes()); // nlmsg_seq
-        hdr[12..16].copy_from_slice(&pid.to_ne_bytes()); // nlmsg_pid
+        hdr[0..4].copy_from_slice(&(nlmsg_len as u32).to_ne_bytes());
+        hdr[4..6].copy_from_slice(&NLMSG_MIN_TYPE.to_ne_bytes());
+        hdr[6..8].copy_from_slice(&NLM_F_REQUEST.to_ne_bytes());
+        hdr[8..12].copy_from_slice(&0u32.to_ne_bytes());
+        hdr[12..16].copy_from_slice(&pid.to_ne_bytes());
 
-        // --- cn_msg (20 bytes header + op payload) ---
         let cn_off = nlmsg_hdrlen();
-        let cn = &mut buf[cn_off..cn_off + SIZE_CN_MSG + std::mem::size_of::<u32>()];
-        // id.idx
+        let cn = &mut buf[cn_off..cn_off + SIZE_CN_MSG + payload.len()];
         cn[0..4].copy_from_slice(&CN_IDX_PROC.to_ne_bytes());
-        // id.val
         cn[4..8].copy_from_slice(&CN_VAL_PROC.to_ne_bytes());
-        // seq
         cn[8..12].copy_from_slice(&0u32.to_ne_bytes());
-        // ack
         cn[12..16].copy_from_slice(&0u32.to_ne_bytes());
-        // len (u16) = sizeof(proc_cn_mcast_op) = 4
-        cn[16..18].copy_from_slice(&(std::mem::size_of::<u32>() as u16).to_ne_bytes());
-        // flags
+        cn[16..18].copy_from_slice(&(payload.len() as u16).to_ne_bytes());
         cn[18..20].copy_from_slice(&0u16.to_ne_bytes());
-        // data = proc_cn_mcast_op
-        cn[20..24].copy_from_slice(&op.to_ne_bytes());
+        cn[20..20 + payload.len()].copy_from_slice(payload);
 
         let iov = libc::iovec {
             iov_base: buf.as_mut_ptr() as *mut libc::c_void,
@@ -164,6 +180,32 @@ impl ProcConnector {
         let ret = unsafe { libc::sendmsg(self.fd.as_raw_fd(), &msg_hdr, 0) };
         if ret < 0 {
             return Err(Error::Os(std::io::Error::last_os_error()));
+        }
+        Ok(())
+    }
+
+    /// Read and validate the kernel's subscription ACK.
+    fn check_subscribe_ack(&self) -> Result<()> {
+        let mut buf = vec![0u8; 4096];
+        let n = self.recv_raw(&mut buf)?;
+        let msg = match crate::parse::first_event_from_buf(&buf, n) {
+            Ok(Some(msg)) => msg,
+            _ => return Ok(()),
+        };
+        if let ProcEvent::Unknown {
+            what: 0,
+            ref raw_data,
+        } = msg
+            && raw_data.len() >= 4
+        {
+            let err = {
+                let arr: [u8; 4] = raw_data[..4].try_into().unwrap();
+                i32::from_ne_bytes(arr)
+            };
+            if err != 0 {
+                let pos = err.checked_neg().unwrap_or(err);
+                return Err(Error::Os(std::io::Error::from_raw_os_error(pos)));
+            }
         }
         Ok(())
     }
@@ -207,6 +249,7 @@ impl ProcConnector {
             return match err.raw_os_error() {
                 Some(libc::EINTR) => Err(Error::Interrupted),
                 Some(libc::EAGAIN) => Err(Error::WouldBlock), // EWOULDBLOCK == EAGAIN on Linux
+                Some(libc::ENOBUFS) => Err(Error::Overrun),
                 _ => Err(Error::Os(err)),
             };
         }
@@ -240,7 +283,7 @@ impl ProcConnector {
     /// }
     /// ```
     pub fn recv_raw_timeout(&self, buf: &mut [u8], timeout: Duration) -> Result<Option<usize>> {
-        let poll_fd = libc::pollfd {
+        let mut poll_fd = libc::pollfd {
             fd: self.fd.as_raw_fd(),
             events: libc::POLLIN,
             revents: 0,
@@ -248,7 +291,7 @@ impl ProcConnector {
 
         let timeout_ms = timeout.as_millis().try_into().unwrap_or(libc::c_int::MAX);
 
-        let ret = unsafe { libc::poll(&poll_fd as *const libc::pollfd as *mut _, 1, timeout_ms) };
+        let ret = unsafe { libc::poll(&mut poll_fd, 1, timeout_ms) };
 
         if ret < 0 {
             let err = std::io::Error::last_os_error();
@@ -331,23 +374,22 @@ impl ProcConnector {
             });
         }
 
+        let deadline = std::time::Instant::now() + timeout;
+
         loop {
-            let n = match self.recv_raw_timeout(buf, timeout) {
+            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+            let n = match self.recv_raw_timeout(buf, remaining) {
                 Ok(Some(n)) => n,
                 Ok(None) => return Ok(None),
                 Err(Error::WouldBlock) => {
-                    // Non-blocking mode — should not happen with timeout
-                    // since recv_raw_timeout uses poll(). Treat as timeout.
                     return Ok(None);
                 }
                 Err(e) => return Err(e),
             };
 
-            // Iterate over all messages in the buffer, skipping control messages
             if let Some(event) = crate::parse::first_event_from_buf(buf, n)? {
                 return Ok(Some(event));
             }
-            // All messages were control messages — loop back and wait for a real event
         }
     }
 
@@ -392,21 +434,33 @@ impl ProcConnector {
     ///
     /// The returned `RawFd` remains valid for the lifetime of this
     /// `ProcConnector`. Do not close it manually.
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// # use proc_connector::ProcConnector;
-    /// # use std::os::fd::AsRawFd;
-    /// let conn = ProcConnector::new().unwrap();
-    /// let raw = conn.as_raw_fd();
-    /// assert!(raw >= 0);
-    ///
-    /// // Use with tokio:
-    /// // let async_fd = tokio::io::unix::AsyncFd::new(conn).unwrap();
-    /// ```
     pub fn as_raw_fd(&self) -> RawFd {
         self.fd.as_raw_fd()
+    }
+
+    /// Set the socket receive buffer size (`SO_RCVBUF`).
+    ///
+    /// Larger buffers reduce the risk of event loss under load.
+    /// Typical values range from 64 KiB to 1 MiB.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::Os` if `setsockopt(2)` fails.
+    pub fn set_recv_buf_size(&self, bytes: usize) -> Result<()> {
+        let size = bytes as libc::c_int;
+        let ret = unsafe {
+            libc::setsockopt(
+                self.fd.as_raw_fd(),
+                libc::SOL_SOCKET,
+                libc::SO_RCVBUF,
+                &size as *const libc::c_int as *const libc::c_void,
+                std::mem::size_of::<libc::c_int>() as u32,
+            )
+        };
+        if ret < 0 {
+            return Err(Error::Os(std::io::Error::last_os_error()));
+        }
+        Ok(())
     }
 
     /// Set the socket to non-blocking mode.
@@ -475,34 +529,77 @@ impl Drop for ProcConnector {
 }
 
 // ---------------------------------------------------------------------------
+// EventMask
+// ---------------------------------------------------------------------------
+
+/// Bitmask of process event types for use with
+/// [`subscribe_filtered`](ProcConnector::subscribe_filtered).
+///
+/// # Example
+///
+/// ```
+/// use proc_connector::EventMask;
+/// let mask = EventMask::EXEC | EventMask::EXIT;
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EventMask(pub u32);
+
+impl EventMask {
+    /// Fork/clone events.
+    pub const FORK: EventMask = EventMask(PROC_EVENT_FORK);
+    /// Exec events.
+    pub const EXEC: EventMask = EventMask(PROC_EVENT_EXEC);
+    /// UID change events.
+    pub const UID: EventMask = EventMask(PROC_EVENT_UID);
+    /// GID change events.
+    pub const GID: EventMask = EventMask(PROC_EVENT_GID);
+    /// Session ID change events.
+    pub const SID: EventMask = EventMask(PROC_EVENT_SID);
+    /// Ptrace attach/detach events.
+    pub const PTRACE: EventMask = EventMask(PROC_EVENT_PTRACE);
+    /// Comm (process name) change events.
+    pub const COMM: EventMask = EventMask(PROC_EVENT_COMM);
+    /// Coredump events.
+    pub const COREDUMP: EventMask = EventMask(PROC_EVENT_COREDUMP);
+    /// Exit events.
+    pub const EXIT: EventMask = EventMask(PROC_EVENT_EXIT);
+    /// All event types.
+    pub const ALL: EventMask = EventMask(
+        PROC_EVENT_FORK
+            | PROC_EVENT_EXEC
+            | PROC_EVENT_UID
+            | PROC_EVENT_GID
+            | PROC_EVENT_SID
+            | PROC_EVENT_PTRACE
+            | PROC_EVENT_COMM
+            | PROC_EVENT_COREDUMP
+            | PROC_EVENT_EXIT,
+    );
+}
+
+impl std::ops::BitOr for EventMask {
+    type Output = EventMask;
+    fn bitor(self, rhs: EventMask) -> EventMask {
+        EventMask(self.0 | rhs.0)
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Helper: create the netlink socket
 // ---------------------------------------------------------------------------
 
 fn create_socket() -> Result<OwnedFd> {
     let fd = unsafe {
-        let fd = libc::socket(libc::PF_NETLINK, libc::SOCK_DGRAM, NETLINK_CONNECTOR);
+        let fd = libc::socket(
+            libc::PF_NETLINK,
+            libc::SOCK_DGRAM | libc::SOCK_CLOEXEC,
+            NETLINK_CONNECTOR,
+        );
         if fd < 0 {
             return Err(Error::Os(std::io::Error::last_os_error()));
         }
         OwnedFd::from_raw_fd(fd)
     };
-
-    // Enable NETLINK_NO_ENOBUFS so the kernel doesn't silently drop
-    // our subscription message when the socket buffer is full.
-    let val: libc::c_int = 1;
-    let ret = unsafe {
-        libc::setsockopt(
-            fd.as_raw_fd(),
-            libc::SOL_NETLINK,
-            NETLINK_NO_ENOBUFS,
-            &val as *const libc::c_int as *const libc::c_void,
-            std::mem::size_of::<libc::c_int>() as u32,
-        )
-    };
-    if ret < 0 {
-        // Non-fatal: proceed even if this option fails.
-        let _ = std::io::Error::last_os_error();
-    }
 
     Ok(fd)
 }
