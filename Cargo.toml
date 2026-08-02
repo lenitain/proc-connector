@@ -12,11 +12,13 @@ categories = ["os", "api-bindings"]
 authors = ["lenitain <xt.zhu@qq.com>"]
 
 include = [
+    "examples"
     "Cargo.toml",
     "LICENSE",
+    "CHANGELOG.md",
     "README.md",
     "src/",
-    "examples"
+    "tests/",
 ]
 
 [lib]
