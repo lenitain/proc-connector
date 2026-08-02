@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-08-02
+
+### Breaking
+
+- Every `ProcEvent` variant gains a `seq: u32` field: the per-CPU monotonic
+  message sequence from the `cn_msg` header (previously dropped during
+  parsing). Consumers can now build exact cursors `(cpu << 32) | seq` and
+  quantify lost events on sequence jumps.
+
 ## [0.2.0] - 2026-07-29
 
 ### Breaking

@@ -21,7 +21,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-proc-connector = "0.2"
+proc-connector = "0.3"
 ```
 
 ### Requirements
