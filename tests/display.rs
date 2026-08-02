@@ -4,6 +4,8 @@ use proc_connector::ProcEvent;
 fn display_exec() {
     let event = ProcEvent::Exec {
         cpu: 0,
+
+        seq: 0,
         pid: 42,
         tgid: 100,
         timestamp_ns: 0,
@@ -17,6 +19,8 @@ fn display_comm() {
     comm[..4].copy_from_slice(b"bash");
     let event = ProcEvent::Comm {
         cpu: 0,
+
+        seq: 0,
         pid: 1,
         tgid: 1,
         comm,
@@ -29,6 +33,8 @@ fn display_comm() {
 fn display_fork() {
     let event = ProcEvent::Fork {
         cpu: 0,
+
+        seq: 0,
         parent_pid: 100,
         parent_tgid: 100,
         child_pid: 200,
@@ -45,6 +51,8 @@ fn display_fork() {
 fn display_exit() {
     let event = ProcEvent::Exit {
         cpu: 0,
+
+        seq: 0,
         pid: 42,
         tgid: 42,
         exit_code: 0,
@@ -63,6 +71,8 @@ fn display_exit() {
 fn display_uid() {
     let event = ProcEvent::Uid {
         cpu: 0,
+
+        seq: 0,
         pid: 1,
         tgid: 1,
         ruid: 1000,
@@ -76,6 +86,8 @@ fn display_uid() {
 fn display_gid() {
     let event = ProcEvent::Gid {
         cpu: 0,
+
+        seq: 0,
         pid: 2,
         tgid: 2,
         rgid: 100,
@@ -92,6 +104,8 @@ fn display_gid() {
 fn display_sid() {
     let event = ProcEvent::Sid {
         cpu: 0,
+
+        seq: 0,
         pid: 3,
         tgid: 3,
         timestamp_ns: 0,
@@ -103,6 +117,8 @@ fn display_sid() {
 fn display_ptrace() {
     let event = ProcEvent::Ptrace {
         cpu: 0,
+
+        seq: 0,
         pid: 10,
         tgid: 10,
         tracer_pid: 99,
@@ -119,6 +135,8 @@ fn display_ptrace() {
 fn display_coredump() {
     let event = ProcEvent::Coredump {
         cpu: 0,
+
+        seq: 0,
         pid: 7,
         tgid: 7,
         parent_pid: 1,

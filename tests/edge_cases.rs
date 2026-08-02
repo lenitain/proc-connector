@@ -236,6 +236,8 @@ fn test_nlmsg_align_neg_like() {
 fn proc_event_clone_and_eq() {
     let e1 = ProcEvent::Exec {
         cpu: 0,
+
+        seq: 0,
         pid: 42,
         tgid: 100,
         timestamp_ns: 0,
@@ -245,6 +247,8 @@ fn proc_event_clone_and_eq() {
 
     let e3 = ProcEvent::Exec {
         cpu: 0,
+
+        seq: 0,
         pid: 43,
         tgid: 100,
         timestamp_ns: 0,

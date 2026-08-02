@@ -16,6 +16,8 @@ fn parse_exec() {
         event,
         ProcEvent::Exec {
             cpu: 0,
+
+            seq: 0,
             pid: 42,
             tgid: 100,
             timestamp_ns: 0,
@@ -38,6 +40,8 @@ fn parse_fork() {
         event,
         ProcEvent::Fork {
             cpu: 0,
+
+            seq: 0,
             parent_pid: 10,
             parent_tgid: 10,
             child_pid: 20,
@@ -64,6 +68,8 @@ fn parse_exit() {
         event,
         ProcEvent::Exit {
             cpu: 0,
+
+            seq: 0,
             pid: 1,
             tgid: 1,
             exit_code: 0,
@@ -90,6 +96,8 @@ fn parse_uid() {
         event,
         ProcEvent::Uid {
             cpu: 0,
+
+            seq: 0,
             pid: 5,
             tgid: 5,
             ruid: 1000,
@@ -114,6 +122,8 @@ fn parse_gid() {
         event,
         ProcEvent::Gid {
             cpu: 0,
+
+            seq: 0,
             pid: 5,
             tgid: 5,
             rgid: 100,
@@ -136,6 +146,8 @@ fn parse_sid() {
         event,
         ProcEvent::Sid {
             cpu: 0,
+
+            seq: 0,
             pid: 7,
             tgid: 7,
             timestamp_ns: 0
@@ -158,6 +170,8 @@ fn parse_ptrace() {
         event,
         ProcEvent::Ptrace {
             cpu: 0,
+
+            seq: 0,
             pid: 1,
             tgid: 1,
             tracer_pid: 999,
@@ -185,6 +199,8 @@ fn parse_comm() {
         event,
         ProcEvent::Comm {
             cpu: 0,
+
+            seq: 0,
             pid: 42,
             tgid: 42,
             comm,
@@ -208,6 +224,8 @@ fn parse_coredump() {
         event,
         ProcEvent::Coredump {
             cpu: 0,
+
+            seq: 0,
             pid: 1,
             tgid: 1,
             parent_pid: 0,
@@ -341,6 +359,8 @@ fn parse_exec_negative_pid() {
         event,
         ProcEvent::Exec {
             cpu: 0,
+
+            seq: 0,
             pid: u32::MAX,
             tgid: u32::MAX,
             timestamp_ns: 0,
@@ -366,6 +386,8 @@ fn parse_comm_no_nul() {
         event,
         ProcEvent::Comm {
             cpu: 0,
+
+            seq: 0,
             pid: 42,
             tgid: 42,
             comm,
@@ -440,6 +462,8 @@ fn parse_with_nlm_f_request_flag() {
         event,
         ProcEvent::Exec {
             cpu: 0,
+
+            seq: 0,
             pid: 42,
             tgid: 100,
             timestamp_ns: 0

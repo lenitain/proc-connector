@@ -46,10 +46,10 @@ use std::fmt;
 ///     }
 /// }
 ///
-/// let exec = ProcEvent::Exec { cpu: 0, pid: 42, tgid: 42, timestamp_ns: 0 };
+/// let exec = ProcEvent::Exec { cpu: 0, seq: 0, pid: 42, tgid: 42, timestamp_ns: 0 };
 /// assert_eq!(describe(&exec), "process 42 exec'd");
 ///
-/// let exit = ProcEvent::Exit { cpu: 0, pid: 7, tgid: 7, exit_code: 0, exit_signal: 17,
+/// let exit = ProcEvent::Exit { cpu: 0, seq: 0, pid: 7, tgid: 7, exit_code: 0, exit_signal: 17,
 ///     parent_pid: 1, parent_tgid: 1, timestamp_ns: 0 };
 /// assert_eq!(describe(&exit), "process 7 exited with code 0");
 /// ```
@@ -61,6 +61,7 @@ use std::fmt;
 ///
 /// let event = ProcEvent::Fork {
 ///     cpu: 0,
+///     seq: 42,
 ///     parent_pid: 100,
 ///     parent_tgid: 100,
 ///     child_pid: 200,
@@ -75,6 +76,8 @@ pub enum ProcEvent {
     Exec {
         /// CPU that generated this event.
         cpu: u32,
+        /// Per-CPU monotonic message sequence (gap detection within one CPU).
+        seq: u32,
         pid: u32,
         tgid: u32,
         /// Kernel timestamp (nanoseconds since boot).
@@ -84,6 +87,8 @@ pub enum ProcEvent {
     Fork {
         /// CPU that generated this event.
         cpu: u32,
+        /// Per-CPU monotonic message sequence (gap detection within one CPU).
+        seq: u32,
         parent_pid: u32,
         parent_tgid: u32,
         child_pid: u32,
@@ -95,6 +100,8 @@ pub enum ProcEvent {
     Exit {
         /// CPU that generated this event.
         cpu: u32,
+        /// Per-CPU monotonic message sequence (gap detection within one CPU).
+        seq: u32,
         pid: u32,
         tgid: u32,
         exit_code: u32,
@@ -108,6 +115,8 @@ pub enum ProcEvent {
     Uid {
         /// CPU that generated this event.
         cpu: u32,
+        /// Per-CPU monotonic message sequence (gap detection within one CPU).
+        seq: u32,
         pid: u32,
         tgid: u32,
         ruid: u32,
@@ -119,6 +128,8 @@ pub enum ProcEvent {
     Gid {
         /// CPU that generated this event.
         cpu: u32,
+        /// Per-CPU monotonic message sequence (gap detection within one CPU).
+        seq: u32,
         pid: u32,
         tgid: u32,
         rgid: u32,
@@ -130,6 +141,8 @@ pub enum ProcEvent {
     Sid {
         /// CPU that generated this event.
         cpu: u32,
+        /// Per-CPU monotonic message sequence (gap detection within one CPU).
+        seq: u32,
         pid: u32,
         tgid: u32,
         /// Kernel timestamp (nanoseconds since boot).
@@ -139,6 +152,8 @@ pub enum ProcEvent {
     Ptrace {
         /// CPU that generated this event.
         cpu: u32,
+        /// Per-CPU monotonic message sequence (gap detection within one CPU).
+        seq: u32,
         pid: u32,
         tgid: u32,
         tracer_pid: u32,
@@ -150,6 +165,8 @@ pub enum ProcEvent {
     Comm {
         /// CPU that generated this event.
         cpu: u32,
+        /// Per-CPU monotonic message sequence (gap detection within one CPU).
+        seq: u32,
         pid: u32,
         tgid: u32,
         /// The new process name (up to 16 bytes, usually NUL-terminated).
@@ -161,6 +178,8 @@ pub enum ProcEvent {
     Coredump {
         /// CPU that generated this event.
         cpu: u32,
+        /// Per-CPU monotonic message sequence (gap detection within one CPU).
+        seq: u32,
         pid: u32,
         tgid: u32,
         parent_pid: u32,
@@ -188,7 +207,7 @@ impl ProcEvent {
     ///
     /// ```
     /// use proc_connector::ProcEvent;
-    /// let e = ProcEvent::Exit { cpu: 0, pid:1, tgid:1, exit_code: (1 << 8), exit_signal:0,
+    /// let e = ProcEvent::Exit { cpu: 0, seq: 0, pid:1, tgid:1, exit_code: (1 << 8), exit_signal:0,
     ///     parent_pid:0, parent_tgid:0, timestamp_ns:0 };
     /// assert_eq!(e.exit_status(), Some(1));
     /// ```

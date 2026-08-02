@@ -150,6 +150,8 @@ pub fn parse_cn_msg(buf: &[u8]) -> Result<ProcEvent> {
         return Err(Error::UnexpectedConnector);
     }
 
+    // cn_msg: seq at offset 8 (per-CPU monotonic, gap detection), ack at 12.
+    let seq = read_u32(buf, 8);
     let data_len = read_u16(buf, 16) as usize;
 
     // proc_event data starts at offset 20 (after fixed cn_msg header)
@@ -160,11 +162,11 @@ pub fn parse_cn_msg(buf: &[u8]) -> Result<ProcEvent> {
         return Err(Error::Truncated);
     };
 
-    parse_proc_event(proc_data)
+    parse_proc_event(proc_data, seq)
 }
 
 /// Parse a `proc_event` struct into a `ProcEvent` enum.
-fn parse_proc_event(buf: &[u8]) -> Result<ProcEvent> {
+fn parse_proc_event(buf: &[u8], seq: u32) -> Result<ProcEvent> {
     if buf.len() < PROC_EVENT_HEADER_SIZE {
         return Err(Error::Truncated);
     }
@@ -174,10 +176,10 @@ fn parse_proc_event(buf: &[u8]) -> Result<ProcEvent> {
     let timestamp_ns = read_u64(buf, 8);
     let data = &buf[PROC_EVENT_HEADER_SIZE..];
 
-    build_proc_event(what, cpu, timestamp_ns, data)
+    build_proc_event(what, cpu, seq, timestamp_ns, data)
 }
 
-fn build_proc_event(what: u32, cpu: u32, timestamp_ns: u64, data: &[u8]) -> Result<ProcEvent> {
+fn build_proc_event(what: u32, cpu: u32, seq: u32, timestamp_ns: u64, data: &[u8]) -> Result<ProcEvent> {
     match what {
         PROC_EVENT_EXEC => {
             if data.len() < SIZE_EXEC_EVENT {
@@ -185,6 +187,7 @@ fn build_proc_event(what: u32, cpu: u32, timestamp_ns: u64, data: &[u8]) -> Resu
             }
             Ok(ProcEvent::Exec {
                 cpu,
+                seq,
                 pid: read_i32(data, EXEC_PID) as u32,
                 tgid: read_i32(data, EXEC_TGID) as u32,
                 timestamp_ns,
@@ -197,6 +200,7 @@ fn build_proc_event(what: u32, cpu: u32, timestamp_ns: u64, data: &[u8]) -> Resu
             }
             Ok(ProcEvent::Fork {
                 cpu,
+                seq,
                 parent_pid: read_i32(data, FORK_PARENT_PID) as u32,
                 parent_tgid: read_i32(data, FORK_PARENT_TGID) as u32,
                 child_pid: read_i32(data, FORK_CHILD_PID) as u32,
@@ -211,6 +215,7 @@ fn build_proc_event(what: u32, cpu: u32, timestamp_ns: u64, data: &[u8]) -> Resu
             }
             Ok(ProcEvent::Exit {
                 cpu,
+                seq,
                 pid: read_i32(data, EXIT_PID) as u32,
                 tgid: read_i32(data, EXIT_TGID) as u32,
                 exit_code: read_u32(data, EXIT_CODE),
@@ -227,6 +232,7 @@ fn build_proc_event(what: u32, cpu: u32, timestamp_ns: u64, data: &[u8]) -> Resu
             }
             Ok(ProcEvent::Uid {
                 cpu,
+                seq,
                 pid: read_i32(data, ID_PID) as u32,
                 tgid: read_i32(data, ID_TGID) as u32,
                 ruid: read_u32(data, ID_RUID_RGID),
@@ -241,6 +247,7 @@ fn build_proc_event(what: u32, cpu: u32, timestamp_ns: u64, data: &[u8]) -> Resu
             }
             Ok(ProcEvent::Gid {
                 cpu,
+                seq,
                 pid: read_i32(data, ID_PID) as u32,
                 tgid: read_i32(data, ID_TGID) as u32,
                 rgid: read_u32(data, ID_RUID_RGID),
@@ -255,6 +262,7 @@ fn build_proc_event(what: u32, cpu: u32, timestamp_ns: u64, data: &[u8]) -> Resu
             }
             Ok(ProcEvent::Sid {
                 cpu,
+                seq,
                 pid: read_i32(data, SID_PID) as u32,
                 tgid: read_i32(data, SID_TGID) as u32,
                 timestamp_ns,
@@ -267,6 +275,7 @@ fn build_proc_event(what: u32, cpu: u32, timestamp_ns: u64, data: &[u8]) -> Resu
             }
             Ok(ProcEvent::Ptrace {
                 cpu,
+                seq,
                 pid: read_i32(data, PTRACE_PID) as u32,
                 tgid: read_i32(data, PTRACE_TGID) as u32,
                 tracer_pid: read_i32(data, PTRACE_TRACER_PID) as u32,
@@ -283,6 +292,7 @@ fn build_proc_event(what: u32, cpu: u32, timestamp_ns: u64, data: &[u8]) -> Resu
             comm.copy_from_slice(&data[COMM_DATA..COMM_DATA + 16]);
             Ok(ProcEvent::Comm {
                 cpu,
+                seq,
                 pid: read_i32(data, COMM_PID) as u32,
                 tgid: read_i32(data, COMM_TGID) as u32,
                 comm,
@@ -296,6 +306,7 @@ fn build_proc_event(what: u32, cpu: u32, timestamp_ns: u64, data: &[u8]) -> Resu
             }
             Ok(ProcEvent::Coredump {
                 cpu,
+                seq,
                 pid: read_i32(data, COREDUMP_PID) as u32,
                 tgid: read_i32(data, COREDUMP_TGID) as u32,
                 parent_pid: read_i32(data, COREDUMP_PARENT_PID) as u32,
