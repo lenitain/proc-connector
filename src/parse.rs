@@ -179,7 +179,13 @@ fn parse_proc_event(buf: &[u8], seq: u32) -> Result<ProcEvent> {
     build_proc_event(what, cpu, seq, timestamp_ns, data)
 }
 
-fn build_proc_event(what: u32, cpu: u32, seq: u32, timestamp_ns: u64, data: &[u8]) -> Result<ProcEvent> {
+fn build_proc_event(
+    what: u32,
+    cpu: u32,
+    seq: u32,
+    timestamp_ns: u64,
+    data: &[u8],
+) -> Result<ProcEvent> {
     match what {
         PROC_EVENT_EXEC => {
             if data.len() < SIZE_EXEC_EVENT {
